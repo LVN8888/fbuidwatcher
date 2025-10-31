@@ -55,7 +55,7 @@ go mod tidy
 ```
 ### 3. Điền token vào .env
 ```bash
-TELEGRAM_TOKEN=YOUR_BOT_TOKEN_HERE
+TG_BOT_TOKEN==YOUR_BOT_TOKEN_HERE
 ```
 ### 4. Chạy bot
 ```bash
