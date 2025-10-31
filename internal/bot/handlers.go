@@ -15,7 +15,8 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
-const minIntervalSec = 300 // 5 phút
+// NOTE: để test cho phép 5 giây; khi chạy thật đổi thành 300 (5 phút)
+const minIntervalSec = 5
 
 type Handlers struct {
 	api         *tgbotapi.BotAPI
@@ -35,110 +36,68 @@ func NewHandlers(api *tgbotapi.BotAPI, store *storage.FileStore) *Handlers {
 }
 
 func (h *Handlers) Handle(upd tgbotapi.Update) {
+	if upd.CallbackQuery != nil {
+		h.handleCallback(upd.CallbackQuery)
+		return
+	}
+	if upd.Message == nil {
+		return
+	}
+
 	msg := strings.TrimSpace(upd.Message.Text)
 	chatID := upd.Message.Chat.ID
 	o := fmt.Sprintf("%d", chatID)
 
 	switch {
 	case strings.HasPrefix(msg, "/start"), strings.HasPrefix(msg, "/help"):
-		h.reply(chatID, `Xin chào! Bot theo dõi live/die UID Facebook.
-
-Lệnh:
-- /add <uid> [ghi chú]         → dùng delay chung hiện tại
-- /list
-- /stats
-- /setdelay <interval>         → ví dụ: /setdelay 10m (tối thiểu 5m)
-- /getdelay
-- /remove <uid>
-- /clear`)
+		h.replyWithMainMenu(chatID)
 
 	case strings.HasPrefix(msg, "/add"):
 		parts := strings.Fields(msg)
-		if len(parts) < 2 {
-			h.reply(chatID, "Sai cú pháp. Ví dụ: /add 1000123456789 acc phụ")
+		if len(parts) < 3 {
+			h.reply(chatID, "❌ Sai cú pháp.\nCú pháp đúng: `/add <uid> <delay> [ghi_chú]`\nVí dụ: `/add 100004253947596 10m Kèo unlock`")
 			return
 		}
 		uid := parts[1]
 		if _, err := strconv.ParseInt(uid, 10, 64); err != nil {
-			h.reply(chatID, "UID phải là số.")
+			h.reply(chatID, "⚠️ UID phải là số.")
 			return
 		}
-		note := ""
-		if len(parts) > 2 {
-			note = strings.TrimSpace(strings.Join(parts[2:], " "))
-		}
-
-		// load
-		ds, _ := h.store.Load()
-		od := ds[o]
-		if od.Items == nil {
-			od.Items = map[string]model.WatchInfo{}
-		}
-		if od.DefaultIntervalSec <= 0 {
-			od.DefaultIntervalSec = minIntervalSec
-		}
-
-		wi := od.Items[uid]
-		wi.UID = uid
-		wi.Note = note
-		wi.AddedAtUnix = time.Now().Unix()
-		// đồng bộ interval của UID = default hiện tại
-		wi.IntervalSec = od.DefaultIntervalSec
-		od.Items[uid] = wi
-		ds[o] = od
-		_ = h.store.Save(ds)
-
-		h.startWatch(chatID, uid, wi.IntervalSec)
-		msg := fmt.Sprintf("✅ Theo dõi UID `%s` mỗi %d giây (gửi tin sau mỗi lần re-check).", uid, wi.IntervalSec)
-		if note != "" {
-			msg += fmt.Sprintf("\n📝 _%s_", escapeMD(note))
-		}
-		h.replyMD(chatID, msg)
-
-	case strings.HasPrefix(msg, "/setdelay"):
-		parts := strings.Fields(msg)
-		if len(parts) < 2 {
-			h.reply(chatID, "Sai cú pháp. Ví dụ: /setdelay 10m (tối thiểu 5m)")
-			return
-		}
-		sec, err := parseIntervalToSeconds(parts[1])
+		sec, err := parseIntervalToSeconds(parts[2])
 		if err != nil || sec < 1 {
-			h.reply(chatID, "Khoảng thời gian không hợp lệ. Dùng 5m, 10m, 1h, 1d.")
+			h.reply(chatID, "⚠️ Delay không hợp lệ. Dùng 5s, 10m, 1h, ...")
 			return
 		}
 		if sec < minIntervalSec {
 			sec = minIntervalSec
 		}
+		note := ""
+		if len(parts) > 3 {
+			note = strings.TrimSpace(strings.Join(parts[3:], " "))
+		}
 
-		// cập nhật default + restart tất cả UID của user này
 		ds, _ := h.store.Load()
 		od := ds[o]
 		if od.Items == nil {
 			od.Items = map[string]model.WatchInfo{}
 		}
-		od.DefaultIntervalSec = sec
-		// cập nhật interval từng UID
-		for uid, wi := range od.Items {
-			wi.IntervalSec = sec
-			od.Items[uid] = wi
-		}
+		wi := od.Items[uid]
+		wi.UID = uid
+		wi.Note = note
+		wi.AddedAtUnix = time.Now().Unix()
+		wi.IntervalSec = sec
+		od.Items[uid] = wi
 		ds[o] = od
 		_ = h.store.Save(ds)
 
-		// restart watches
-		for uid := range od.Items {
-			h.startWatch(chatID, uid, sec)
-		}
+		h.startWatch(chatID, uid, wi.IntervalSec)
 
-		h.reply(chatID, fmt.Sprintf("⏱️ Đã đặt delay chung = %d giây cho tất cả UID.", sec))
-
-	case strings.HasPrefix(msg, "/getdelay"):
-		ds, _ := h.store.Load()
-		od := ds[o]
-		if od.DefaultIntervalSec <= 0 {
-			od.DefaultIntervalSec = minIntervalSec
+		var text strings.Builder
+		text.WriteString(fmt.Sprintf("✅ **Đã theo dõi UID `%s` mỗi %d giây.**", uid, wi.IntervalSec))
+		if note != "" {
+			text.WriteString(fmt.Sprintf("\n📝 *Ghi chú:* %s", note))
 		}
-		h.reply(chatID, fmt.Sprintf("⏱️ Delay hiện tại: %d giây.", od.DefaultIntervalSec))
+		h.replyWithUIDMenu(chatID, text.String())
 
 	case strings.HasPrefix(msg, "/list"):
 		h.reply(chatID, h.listWatches(chatID))
@@ -149,16 +108,39 @@ Lệnh:
 	case strings.HasPrefix(msg, "/remove"), strings.HasPrefix(msg, "/stop"):
 		parts := strings.Fields(msg)
 		if len(parts) < 2 {
-			h.reply(chatID, "Sai cú pháp. Ví dụ: /remove 1000123456789")
+			h.reply(chatID, "❌ Sai cú pháp.\nVí dụ: `/remove 1000123456789`")
 			return
 		}
 		h.stopWatch(chatID, parts[1])
-		h.replyMD(chatID, fmt.Sprintf("🗑️ Đã bỏ theo dõi UID `%s`.", parts[1]))
+		h.reply(chatID, fmt.Sprintf("🗑️ Đã dừng theo dõi UID `%s`.", parts[1]))
 
 	case strings.HasPrefix(msg, "/clear"):
 		h.clearAll(chatID)
 		h.reply(chatID, "🧹 Đã dừng theo dõi tất cả UID của bạn.")
 	}
+}
+
+// ---------- Callback (inline keyboard) ----------
+func (h *Handlers) handleCallback(cb *tgbotapi.CallbackQuery) {
+	data := cb.Data
+	chatID := cb.Message.Chat.ID
+
+	switch {
+	case strings.HasPrefix(data, "stop:"):
+		uid := strings.TrimPrefix(data, "stop:")
+		h.stopWatch(chatID, uid)
+		h.answerCB(cb, "Đã dừng "+uid)
+		edit := tgbotapi.NewEditMessageReplyMarkup(chatID, cb.Message.MessageID, tgbotapi.InlineKeyboardMarkup{})
+		h.api.Send(edit)
+
+	case data == "list":
+		h.answerCB(cb, "📋 Danh sách UID")
+		h.reply(chatID, h.listWatches(chatID))
+	}
+}
+
+func (h *Handlers) answerCB(cb *tgbotapi.CallbackQuery, text string) {
+	_, _ = h.api.Request(tgbotapi.NewCallback(cb.ID, text))
 }
 
 // ---------- Core watch ----------
@@ -168,8 +150,6 @@ func (h *Handlers) startWatch(ownerID int64, uid string, intervalSec int) {
 	}
 
 	k := fmt.Sprintf("%d:%s", ownerID, uid)
-
-	// cancel nếu đã tồn tại
 	h.cancelMu.Lock()
 	if cancel, ok := h.cancelTasks[k]; ok {
 		cancel()
@@ -183,10 +163,9 @@ func (h *Handlers) startWatch(ownerID int64, uid string, intervalSec int) {
 	h.cancelMu.Unlock()
 
 	go func() {
-		// Check lần đầu
 		st := h.fb.CheckLive(uid)
 		isLive := (st == "live")
-		h.replyMD(ownerID, fmt.Sprintf("Initial check `%s` → %s", uid, humanStatus(st)))
+		h.sendUIDStatus(ownerID, uid, st, intervalSec, true)
 		h.updateLastStatus(ownerID, uid, isLive, intervalSec)
 
 		ticker := time.NewTicker(time.Duration(intervalSec) * time.Second)
@@ -195,16 +174,12 @@ func (h *Handlers) startWatch(ownerID int64, uid string, intervalSec int) {
 		for {
 			select {
 			case <-ctx.Done():
-				h.replyMD(ownerID, fmt.Sprintf("🛑 Đã dừng theo dõi UID `%s`.", uid))
+				h.reply(ownerID, fmt.Sprintf("🛑 Đã dừng theo dõi UID %s.", uid))
 				return
 			case <-ticker.C:
 				st := h.fb.CheckLive(uid)
 				isLive := (st == "live")
-
-				// ✅ Luôn gửi tin mỗi lần re-check
-				h.replyMD(ownerID, fmt.Sprintf("Re-check `%s` @ %s → %s",
-					uid, time.Now().Format("15:04:05"), humanStatus(st)))
-
+				h.sendUIDStatus(ownerID, uid, st, intervalSec, false)
 				h.updateLastStatus(ownerID, uid, isLive, intervalSec)
 			}
 		}
@@ -217,10 +192,9 @@ func (h *Handlers) listWatches(ownerID int64) string {
 	o := fmt.Sprintf("%d", ownerID)
 	od := ds[o]
 	if len(od.Items) == 0 {
-		return "Bạn chưa theo dõi UID nào."
+		return "⚠️ Bạn chưa theo dõi UID nào."
 	}
 
-	// sắp xếp theo thời gian thêm
 	type row struct {
 		uid  string
 		info model.WatchInfo
@@ -232,8 +206,7 @@ func (h *Handlers) listWatches(ownerID int64) string {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].info.AddedAtUnix < rows[j].info.AddedAtUnix })
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("Delay chung: %d giây\n", od.DefaultIntervalSec))
-	b.WriteString("Danh sách UID bạn đang theo dõi:\n")
+	b.WriteString("📋 **Danh sách UID bạn đang theo dõi:**\n\n")
 	for _, r := range rows {
 		status := "—"
 		if r.info.LastStatus != nil {
@@ -244,10 +217,10 @@ func (h *Handlers) listWatches(ownerID int64) string {
 			}
 		}
 		if r.info.Note != "" {
-			b.WriteString(fmt.Sprintf("- `%s` | %ds | last: %s | 📝 %s\n",
+			b.WriteString(fmt.Sprintf("• `%s` | %ds | %s | 📝 %s\n",
 				r.uid, r.info.IntervalSec, status, r.info.Note))
 		} else {
-			b.WriteString(fmt.Sprintf("- `%s` | %ds | last: %s\n",
+			b.WriteString(fmt.Sprintf("• `%s` | %ds | %s\n",
 				r.uid, r.info.IntervalSec, status))
 		}
 	}
@@ -259,7 +232,7 @@ func (h *Handlers) stats(ownerID int64) string {
 	o := fmt.Sprintf("%d", ownerID)
 	od := ds[o]
 	if len(od.Items) == 0 {
-		return "Chưa có dữ liệu thống kê (bạn chưa theo dõi UID nào)."
+		return "⚠️ Chưa có dữ liệu thống kê (bạn chưa theo dõi UID nào)."
 	}
 	total, live, die, unknown := 0, 0, 0, 0
 	for _, info := range od.Items {
@@ -274,12 +247,11 @@ func (h *Handlers) stats(ownerID int64) string {
 			die++
 		}
 	}
-	return fmt.Sprintf("📊 Thống kê của bạn:\n- Tổng UID: %d\n- ✅ LIVE: %d\n- ❌ DIE: %d\n- Chưa biết: %d",
+	return fmt.Sprintf("📊 **Thống kê của bạn:**\n- Tổng UID: %d\n- ✅ LIVE: %d\n- ❌ DIE: %d\n- ❔ Chưa biết: %d",
 		total, live, die, unknown)
 }
 
 func (h *Handlers) stopWatch(ownerID int64, uid string) {
-	// cancel goroutine
 	k := fmt.Sprintf("%d:%s", ownerID, uid)
 	h.cancelMu.Lock()
 	if cancel, ok := h.cancelTasks[k]; ok {
@@ -288,7 +260,6 @@ func (h *Handlers) stopWatch(ownerID int64, uid string) {
 	}
 	h.cancelMu.Unlock()
 
-	// xóa khỏi storage
 	ds, _ := h.store.Load()
 	o := fmt.Sprintf("%d", ownerID)
 	od := ds[o]
@@ -300,7 +271,6 @@ func (h *Handlers) stopWatch(ownerID int64, uid string) {
 }
 
 func (h *Handlers) clearAll(ownerID int64) {
-	// cancel tất cả uid của owner
 	prefix := fmt.Sprintf("%d:", ownerID)
 	h.cancelMu.Lock()
 	for kk, cancel := range h.cancelTasks {
@@ -311,7 +281,6 @@ func (h *Handlers) clearAll(ownerID int64) {
 	}
 	h.cancelMu.Unlock()
 
-	// xóa dữ liệu owner
 	ds, _ := h.store.Load()
 	delete(ds, fmt.Sprintf("%d", ownerID))
 	_ = h.store.Save(ds)
@@ -332,23 +301,43 @@ func (h *Handlers) updateLastStatus(ownerID int64, uid string, isLive bool, inte
 		wi.AddedAtUnix = time.Now().Unix()
 	}
 	od.Items[uid] = wi
-	if od.DefaultIntervalSec < minIntervalSec {
-		od.DefaultIntervalSec = minIntervalSec
-	}
 	ds[o] = od
 	_ = h.store.Save(ds)
 }
 
-// ---------- small I/O helpers ----------
+// ---------- UI helpers ----------
 func (h *Handlers) reply(chatID int64, text string) {
-	msg := tgbotapi.NewMessage(chatID, text)
-	h.api.Send(msg)
-}
-func (h *Handlers) replyMD(chatID int64, text string) {
 	msg := tgbotapi.NewMessage(chatID, text)
 	msg.ParseMode = "Markdown"
 	h.api.Send(msg)
 }
+
+func (h *Handlers) replyWithMainMenu(chatID int64) {
+	intro := `👋 *Chào mừng đến với Bot theo dõi UID Facebook!*
+💡 Công cụ miễn phí được phát triển bởi **@lvnsoftware** giúp bạn kiểm tra trạng thái LIVE/DIE của UID Facebook tự động 1 cách nhanh chóng.
+
+*⚙️ HƯỚNG DẪN SỬ DỤNG:*
+
+📌 */add <uid> <delay> [ghi_chú]* → Bắt đầu theo dõi 1 UID  
+📋 */list* → Danh sách đang theo dõi  
+📊 */stats* → Thống kê LIVE/DIE  
+🗑 */remove <uid>* → Dừng & xoá 1 UID  
+🚫 */clear* → Dừng & xoá tất cả UID  
+
+📩 Liên hệ hỗ trợ: *@hetcuuae*
+`
+
+	msg := tgbotapi.NewMessage(chatID, intro)
+	msg.ParseMode = "Markdown"
+	h.api.Send(msg)
+}
+
+func (h *Handlers) replyWithUIDMenu(chatID int64, text string) {
+	msg := tgbotapi.NewMessage(chatID, text)
+	msg.ParseMode = "Markdown"
+	h.api.Send(msg)
+}
+
 func humanStatus(st string) string {
 	switch st {
 	case "live":
@@ -359,9 +348,19 @@ func humanStatus(st string) string {
 		return "⚠️ ERROR"
 	}
 }
-func escapeMD(s string) string {
-	repl := strings.NewReplacer("_", "\\_", "*", "\\*", "`", "\\`", "[", "\\[")
-	return repl.Replace(s)
+
+func (h *Handlers) sendUIDStatus(chatID int64, uid, st string, interval int, first bool) {
+	prefix := "Re-check"
+	if first {
+		prefix = "Initial"
+	}
+	line := fmt.Sprintf("UID: `%s` @ %s → %s", uid, time.Now().Format("15:04:05"), humanStatus(st))
+	if first {
+		line = fmt.Sprintf("%s | delay %ds\n%s", prefix, interval, line)
+	}
+	msg := tgbotapi.NewMessage(chatID, line)
+	msg.ParseMode = "Markdown"
+	h.api.Send(msg)
 }
 
 // ---------- Khôi phục khi bot khởi động ----------
@@ -372,17 +371,17 @@ func (h *Handlers) RestoreWatches() {
 		if err != nil {
 			continue
 		}
-		interval := od.DefaultIntervalSec
-		if interval < minIntervalSec {
-			interval = minIntervalSec
-		}
-		for uid := range od.Items {
-			h.startWatch(oid, uid, interval)
+		for uid, wi := range od.Items {
+			iv := wi.IntervalSec
+			if iv < minIntervalSec {
+				iv = minIntervalSec
+			}
+			h.startWatch(oid, uid, iv)
 		}
 	}
 }
 
-// parseIntervalToSeconds: local (tránh phụ thuộc utils nếu bạn đã bỏ)
+// parseIntervalToSeconds: "5s", "10m", "1h", "2d"...
 func parseIntervalToSeconds(s string) (int, error) {
 	s = strings.TrimSpace(strings.ToLower(s))
 	if s == "" {
