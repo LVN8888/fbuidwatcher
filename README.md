@@ -66,9 +66,9 @@ go run ./cmd/fbuidwatcher
 ```bash
 GOOS=windows GOARCH=amd64 go build -o fbuidwatcher.exe ./cmd/fbuidwatcher
 ```
-Sau khi build thành công, bạn sẽ có file fbuidwatcher.exe để chạy trên máy Windows.
+> Sau khi build thành công, bạn sẽ có file fbuidwatcher.exe để chạy trên máy Windows.
 
 ## 📜 Giấy phép sử dụng
 
-Dự án sử dụng giấy phép MIT License — miễn phí sử dụng, chia sẻ và chỉnh sửa.
-⭐ Nếu dự án này hữu ích, hãy để lại một ⭐ Star trên GitHub nhé!
+> Dự án sử dụng giấy phép MIT License — miễn phí sử dụng, chia sẻ và chỉnh sửa.
+> ⭐ Nếu dự án này hữu ích, hãy để lại một ⭐ Star trên GitHub nhé!
