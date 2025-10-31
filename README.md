@@ -48,12 +48,3 @@ fbuidwatcher/
 
 - Go >= **1.21**
 - Telegram Bot Token từ [@BotFather](https://t.me/BotFather)
-
----
-
-## 🔧 Cài đặt & Setup
-
-### 1️⃣ Clone project
-```bash
-git clone https://github.com/LVN8888/fbuidwatcher.git
-cd fbuidwatcher
