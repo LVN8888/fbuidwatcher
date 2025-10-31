@@ -1,26 +1,37 @@
-# Bỏ file cấu hình cá nhân
+# ---- Go build outputs / binaries ----
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage.*
+
+# App binaries (Linux & Windows)
+fbuidwatcher
+fbuidwatcher.exe
+/bin/
+/dist/
+/build/
+
+# ---- Go dependencies (optional) ----
+vendor/
+
+# ---- OS junk ----
+.DS_Store
+Thumbs.db
+
+# ---- Editors / IDE ----
+.vscode/
+.idea/
+*.code-workspace
+
+# ---- App specific secrets & data ----
 .env
 .env.*
 !.env.example
-
-# Bỏ dữ liệu runtime
 data.json
-*.tmp
-
-# Build output
-/fbuidwatcher
-/fbuidwatcher.exe
-
-# Thư mục tạm
-/tmp
-/vendor
-/bin
-/dist
-
-# IDE / hệ thống
-.vscode/
-.idea/
-*.log
-*.bak
-.DS_Store
-Thumbs.db
+*.db
+logs/
+rsrc.syso
