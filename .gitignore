@@ -1,0 +1,26 @@
+# Bỏ file cấu hình cá nhân
+.env
+.env.*
+!.env.example
+
+# Bỏ dữ liệu runtime
+data.json
+*.tmp
+
+# Build output
+/fbuidwatcher
+/fbuidwatcher.exe
+
+# Thư mục tạm
+/tmp
+/vendor
+/bin
+/dist
+
+# IDE / hệ thống
+.vscode/
+.idea/
+*.log
+*.bak
+.DS_Store
+Thumbs.db
