@@ -8,5 +8,9 @@ type WatchInfo struct {
 	AddedAtUnix int64  `json:"added_at_unix"`
 }
 
-// DataStore: ownerID -> (uid -> WatchInfo)
-type DataStore map[string]map[string]WatchInfo
+type OwnerData struct {
+	DefaultIntervalSec int                  `json:"default_interval"`
+	Items              map[string]WatchInfo `json:"items"`
+}
+
+type DataStore map[string]OwnerData
