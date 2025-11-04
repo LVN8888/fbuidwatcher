@@ -11,7 +11,6 @@ type Config struct {
 	TelegramToken string
 }
 
-// Load đọc file .env thủ công (Go thuần)
 func Load() (*Config, error) {
 	file, err := os.Open(".env")
 	if err == nil {
