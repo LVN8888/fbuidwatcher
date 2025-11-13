@@ -112,7 +112,7 @@ func (h *Handlers) Handle(upd tgbotapi.Update) {
 			return
 		}
 		h.stopWatch(chatID, parts[1])
-		h.reply(chatID, fmt.Sprintf("🗑️ Đã dừng theo dõi UID `%s`.", parts[1]))
+		h.reply(chatID, fmt.Sprintf("🗑️ Đã dừng theo dõi thành công UID `%s`.", parts[1]))
 
 	case strings.HasPrefix(msg, "/clear"):
 		h.clearAll(chatID)
